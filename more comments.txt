@@ -1,0 +1,25 @@
+Was messing around with Python, Numpy, and Cython to try and speed stuff up. When I finally got Cython to work, it didn't do much faster than Python, and sometimes it was slower. C# code took about 2.5 hours to figure out how to write (write in a raw .cs file calling csc.exe to compile the code and check for errors periodically, and use Visual Studio only to search for functions and methods of objects), but it was about 60x faster to do the same dither.
+	seriously, it was taking like 10-35+ seconds for a 750x1050 image, depending on the dithering algorithm. C# dithers that same-size image in around 0.07 to 0.35 seconds.
+
+I like the varco (Ostromokhov) dithering, but it tends to leave these vertical line artifacts, so I mixed it with gradient diffusion dithering, then stripped away things until I got about the minimum that would remove the artifacts without creating a bunch of noise. This was to randomize weights based on pixel values and a random number; it took about twice as long as vanilla varco.
+
+I wanted to reproduce GIMP's Brightness/Contrast feature; it was a bit more complicated than expected. When lowering brightness, you just multiply by the scaling factor (this was actually the part I had more trouble figuring out!), but when increasing brightness you scale between added_brightness and 255, then add the brightness (and clip between 0 and 255, just in case of overflow).
+
+After I thought I was done with the dithering stuff, I read about how printing preprocessing tends to do a gamma then edge detect first. I couldn't figure out how to tweak gamma to consistently make stuff look good, so I tried CLAHE (contrast-limited adaptive histogram equalization) and that worked well. Then I tried unsharp for sharpen (edge detect) and that worked well.
+	I then spent hours playing with combinations of these and other algorithms, and found that two CLAHEs makes features even sharper—which usually looks better except in cases where images use text. CLAHE -> unsharp -> unsharp I used for images with text, and CLAHE -> unsharp -> CLAHE -> unsharp -> unsharp I used for most images. I didn't try much, so possibly there are even better algorithms but this looks pretty darn good.
+	I think I also played around with naive equalization (whatever is -equalize in ImageMagick) and sometimes this made images look absurdly colorful, but also it lost a lot of information from the original image.
+	Generally, increasing saturation after a CLAHE looked good.
+
+I tended to use ImageMagick to prototype stuff, then I implemented it in Python (sometimes calling ImageMagick until I'd settled on a workflow). I wasn't sure how to easily export the result of a C# code to Python, so I just called the command line to edit the image. There are still some quirks in the image dithering flow, like how it edits the image in Python, then calls the C# dithering code (fast! but also takes time to load and write image), then calls ImageMagick once to reduce the image file size (which I think it does by changing just the bit depth or something... dunno how to do that in Python).
+
+uint8 overflow can cause some very trippy images from the wraparound. High negative gamma and near-zero negative/positive gamma also have unique effects. Would be interesting to try and chain together a bunch of random edits to try and make weird, colorful images. Maybe could be done automatically.
+
+I was using a cheapo $30-40 58mm thermal receipt printer to print the images. I suppose these are mostly similar in performance, although a non-cheap one would be able to print a full-width page of black without fading or freezing. (the printer I used actually freezes and stops printing if there's too much black horizontally)
+
+For the detailed area of the gradient diffusion, it seemed to matter how some of the weight modifier terms were chosen. When I used zeroes, the last row tended to get black pixels for no reason. When I filled in end-row zeroes with the mean of the other nonzero terms, the black pixels went away.
+
+I spent a lot of time trying to "vectorize" or optimize stuff in Python. What I should have done, was to just do it with for loops in both Python and C#. Then, I would have clearly seen that C# was 50-100x faster than anything I could do in Python, and that I should just outsource the dithering step to C.
+
+Serpentine dithering looked like it had basically no effect. Too fancy.
+
+There were also some algorithms that filled space with fractal patterns. That looks interesting. Didn't study or implement it, though.
